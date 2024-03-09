@@ -1,4 +1,9 @@
 #include <PID_v1.h>
+
+#define outputA A0
+#define outputB A1
+int aState;
+int aLastState;  
 // ########## MOTOR VARIABLES ##############
 // Motor 1
 int PWM1 = 5;
@@ -18,10 +23,12 @@ double rotationalAngleMotor2 = 0.0;
 
 // ########## ENCODER VARIABLES ##############
 // Pin configuration
-const int encoderPinMotor1A = 2;  // Connect encoder channel A Motor 1 to digital pin 2
-const int encoderPinMotor1B = 10;  // Connect encoder channel B Motor 1 to digital pin 2
+//const int encoderPinMotor1A = 2;  // Connect encoder channel A Motor 1 to digital pin 2
+//const int encoderPinMotor1B = 10;  // Connect encoder channel B Motor 1 to digital pin 2
 const int encoderPinMotor2A = 3;  // Connect encoder channel A Motor 2 to digital pin 3
 const int encoderPinMotor2B = 11;  // Connect encoder channel A Motor 2 to digital pin 3
+//const int encoderPinMotor1A = A0;  // Analog pin for encoder channel A
+//const int encoderPinMotor1B = A1;  // Analog pin for encoder channel B
 // Initial variables
 volatile long encoderPositionMotor1 = 0;  // Encoder position, volatile as it's modified in an interrupt
 volatile long encoderPositionMotor2 = 0;
@@ -45,13 +52,13 @@ const float error_umbral = 1.0;
 void setup() {
   // ########## ENCODER SETUP ##############
   // Set up the encoder pins as inputs with pullup resistors
-  pinMode(encoderPinMotor1A, INPUT_PULLUP);
-  pinMode(encoderPinMotor1B, INPUT_PULLUP);
+  //pinMode(encoderPinMotor1A, INPUT_PULLUP);
+  //pinMode(encoderPinMotor1B, INPUT_PULLUP);
   pinMode(encoderPinMotor2A, INPUT_PULLUP);
   pinMode(encoderPinMotor2B, INPUT_PULLUP);
   // Attach interrupts to the encoder pins
-  attachInterrupt(digitalPinToInterrupt(encoderPinMotor1A), handleEncoderMotor1, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(encoderPinMotor2A), handleEncoderMotor2, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(encoderPinMotor1A), handleEncoderMotor1, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(encoderPinMotor2A), handleEncoderMotor2, CHANGE);
 
   // ########## MOTOR SETUP ##############
   // Motor 1 initial function
@@ -65,16 +72,16 @@ void setup() {
 
   // ########## PID SETUP ##############
   pid_M1.SetMode(AUTOMATIC);
-  pid_M1.SetOutputLimits(-200, 200);  // Adjust output limits based on your motor driver
-  pid_M1.SetSampleTime(10);  // Set PID sample time in milliseconds
+  pid_M1.SetOutputLimits(-20, 20);  // Adjust output limits based on your motor driver
+  pid_M1.SetSampleTime(5);  // Set PID sample time in milliseconds
   pid_M2.SetMode(AUTOMATIC);
-  pid_M2.SetOutputLimits(-200, 200);  // Adjust output limits based on your motor driver
-  pid_M2.SetSampleTime(10);  // Set PID sample time in milliseconds
+  pid_M2.SetOutputLimits(-20, 20);  // Adjust output limits based on your motor driver
+  pid_M2.SetSampleTime(5);  // Set PID sample time in milliseconds
 
   // ########## ALGORITHM SETUP ##############
   // Other setup code
   Serial.begin(115200);
-  
+  aLastState = analogRead(outputA) > 512 ? HIGH : LOW;
 }
 
 void loop() {
@@ -83,6 +90,21 @@ void loop() {
     int number = temp_string.toInt();
     setpointMotor1 = number;
   }
+
+  aState = analogRead(outputA) > 512 ? HIGH : LOW;
+
+  if (aState != aLastState){     
+    // If the outputB state is different to the outputA state, that means the encoder is rotating clockwise
+    int output_B = analogRead(outputB) > 512 ? HIGH : LOW;
+    if (output_B != aState) { 
+      encoderPositionMotor1 ++;
+    } else {
+      encoderPositionMotor1 --;
+    }
+    Serial.print("Position: ");
+    Serial.println(encoderPositionMotor1);
+  }
+  aLastState = aState;
   rotationalAngleMotor1 = (360.0 * encoderPositionMotor1) / (PPR * decodeNumber * gearRatio);
   rotationalAngleMotor2 = (360.0 * encoderPositionMotor2) / (PPR * decodeNumber * gearRatio);
   inputMotor1 = rotationalAngleMotor1;
@@ -90,14 +112,14 @@ void loop() {
   current_error_motor1 = setpointMotor1 - rotationalAngleMotor1;
   current_error_motor2 = setpointMotor2 - rotationalAngleMotor2;
   pid_M1.Compute();
-  pid_M2.Compute();
+  //pid_M2.Compute();
 
   if (outputMotor1 > 0) {
-    digitalWrite(INA1, HIGH);
-    digitalWrite(INB1, LOW);
-  } else {
     digitalWrite(INA1, LOW);
     digitalWrite(INB1, HIGH);
+  } else {
+    digitalWrite(INA1, HIGH);
+    digitalWrite(INB1, LOW);
   }
 
   if (outputMotor2 > 0) {
@@ -130,24 +152,10 @@ void loop() {
   Serial.print(" | Output od PID: ");
   Serial.println(outputMotor1);
 
-  delay(100);
+  //delay(100);
 }
 
 // Interrupt service routine for the encoder
-void handleEncoderMotor1() {
-  // Read the current state of the two channels
-  int stateA = digitalRead(encoderPinMotor1A);
-  int stateB = digitalRead(encoderPinMotor1B);
-
-  // Update the encoder position based on the quadrature encoding
-  if (stateA == stateB) {
-    // Clockwise rotation
-    encoderPositionMotor1++;
-  } else {
-    // Counterclockwise rotation
-    encoderPositionMotor1--;
-  }
-}
 
 void handleEncoderMotor2() {
   // Read the current state of the two channels
